@@ -27,6 +27,14 @@ class ClassStatusesController < ApplicationController
     @class_status = ClassStatus.new(class_status_params)
 	  user_id = @class_status.user_id
 	  class_id = @class_status.class_list_id
+	  
+	  user = User.find(user_id)
+	  class_list = ClassList.find(class_id)
+	  
+	  current_units = user.current_unit
+	  new_unit = class_list.unit || 0
+	  
+	  # unit_id = @class_status.class_list.unit
 	  @class_status_overlap = ClassStatus.where(user_id: user_id, class_list_id: class_id).size
 	  @class_status_size = ClassStatus.where(class_list_id: class_id).size
 	  puts "현재 사이즈 수 : #{@class_status_overlap}"
@@ -34,16 +42,21 @@ class ClassStatusesController < ApplicationController
 	  puts "강의ID : #{@class_id}"
 
     respond_to do |format|
-	if @class_status_overlap > 0
-		format.html { redirect_to root_path, notice: '중복신청은 되지 않습니다.'}
-	elsif @class_status_size >= ClassList.find(class_id).c_account
-		format.html { redirect_to root_path, notice: '수강인원을 초과할수 없습니다.'}
-	else
-		@class_status.save
-        format.html { redirect_to root_path, notice: '강의 신청이 완료되었습니다.' }
-      end
-    end
-  end
+		if ClassStatus.applied?(user_id, class_id)
+			format.html { redirect_to root_path, notice: '중복신청은 되지 않습니다.'}
+		elsif ClassStatus.exceeds_capacity?(class_id)
+			format.html { redirect_to root_path, notice: '수강인원을 초과할수 없습니다.'}
+		elsif !ClassStatus.can_add_unit?(new_unit))
+			format.html { redirect_to root_path, notice: '학점을 초과하였습니다.'}
+		else 
+			if @class_status.save
+				format.html { redirect_to root_path, notice: '강의 신청이 완료되었습니다.' }
+			else
+				format.html {render: new}
+			end
+		end
+	end
+end
 
   # PATCH/PUT /class_statuses/1
   # PATCH/PUT /class_statuses/1.json
@@ -62,7 +75,12 @@ class ClassStatusesController < ApplicationController
   # DELETE /class_statuses/1
   # DELETE /class_statuses/1.json
   def destroy
+	class_units = @class_status.class_list.unit
+
+	  
     @class_status.destroy
+	total_units = ClassStatus.where(user_id: @class_status.user_id).joins(:class_list).sum('class_lists.unit') || 0
+	  
     respond_to do |format|
       format.html { redirect_to class_statuses_url, notice: '강의신청이 취소되었습니다.' }
       format.json { head :no_content }
